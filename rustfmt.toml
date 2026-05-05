@@ -1,0 +1,5 @@
+edition = "2018"
+
+fn_params_layout = "Vertical"
+max_width = 88
+reorder_imports = true

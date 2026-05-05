@@ -1,0 +1,26 @@
+services:
+  json_adapter:
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+      network: host
+    env_file:
+      - .env
+    ports:
+      - "7085:8000"
+    networks:
+      - no-internet
+      - has-internet
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  no-internet:
+    driver: bridge
+    external: true
+  has-internet:
+    driver: host
+    external: true
