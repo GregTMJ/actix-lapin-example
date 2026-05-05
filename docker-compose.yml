@@ -1,5 +1,5 @@
 services:
-  json_adapter:
+  json_adapter_rust:
     build:
       context: ./
       dockerfile: ./Dockerfile

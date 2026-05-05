@@ -3,12 +3,12 @@ use log::warn;
 use std::io::Result;
 use tokio::task;
 
-use actix_web::{main, middleware, web::Data, App, HttpServer};
+use actix_lapin::api::base::send_and_receive;
+use actix_lapin::api::ping::healthcheck;
+use actix_lapin::{PROJECT_CONFIG, rmq::builder::ConnectionBuilder};
+use actix_web::{App, HttpServer, main, middleware, web::Data};
 use dotenvy::dotenv;
-use env_logger::{init_from_env, Env};
-use json_adapter_rust::api::base::send_and_receive;
-use json_adapter_rust::api::ping::healthcheck;
-use json_adapter_rust::{rmq::builder::ConnectionBuilder, PROJECT_CONFIG};
+use env_logger::{Env, init_from_env};
 
 #[main]
 async fn main() -> Result<()> {

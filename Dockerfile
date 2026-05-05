@@ -9,6 +9,6 @@ FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/json-adapter-rust /usr/local/bin/json-adapter-rust
+COPY --from=builder /app/target/release/actix-lapin /usr/local/bin/actix-lapin
 
-CMD ["json-adapter-rust"]
+CMD ["actix-lapin"]

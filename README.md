@@ -14,8 +14,8 @@ A Rust service that bridges RabbitMQ with an HTTP layer using [Actix Web](https:
 
 - **Rust 2024** edition
 - **Actix Web 4** – HTTP server
-- **Lapin 4** – <img src="https://raw.githubusercontent.com/amqp-rs/lapin/master/lapin.png" alt="lapin" width="16" height="16" /> AMQP 0-9-1 client for RabbitMQ
-- **Tokio** – <img src="https://raw.githubusercontent.com/tokio-rs/tokio/master/tokio/logo.png" alt="tokio" width="16" height="16" /> async runtime
+- **Lapin 4** – AMQP 0-9-1 client for RabbitMQ
+- **Tokio** – Async runtime
 
 ## Project Structure
 
