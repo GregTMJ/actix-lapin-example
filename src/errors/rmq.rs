@@ -1,3 +1,4 @@
+//! Module for RMQ errors.
 use thiserror::Error;
 
 #[derive(Debug, Default, Error)]

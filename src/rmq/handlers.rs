@@ -1,3 +1,4 @@
+//! Module for RMQ struct/function handlers
 use lapin::options::BasicAckOptions;
 use lapin::types::ShortString;
 use log::debug;
@@ -21,48 +22,7 @@ use log::info;
 
 use crate::PROJECT_CONFIG;
 use crate::errors::rmq::RmqErrors;
-
-use lapin::ExchangeKind;
-
-#[derive(Debug)]
-pub struct Exchange<'a> {
-    pub name: &'a str,
-    pub exchange_type: ExchangeKind,
-}
-
-impl<'a> Exchange<'a> {
-    pub fn new(
-        name: &'a str,
-        exchange_type: &str,
-    ) -> Self {
-        let lowercased_exchange_type = exchange_type.to_ascii_lowercase();
-        let exchange_type = match lowercased_exchange_type.as_str() {
-            "direct" => ExchangeKind::Direct,
-            "fanout" => ExchangeKind::Fanout,
-            "headers" => ExchangeKind::Headers,
-            _ => ExchangeKind::Topic,
-        };
-        Self {
-            name,
-            exchange_type,
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Queue<'a> {
-    pub name: &'a str,
-    pub routing_key: &'a str,
-}
-
-impl<'a> Queue<'a> {
-    pub fn new(
-        name: &'a str,
-        routing_key: &'a str,
-    ) -> Self {
-        Self { name, routing_key }
-    }
-}
+use crate::rmq::schemas::{Exchange, Queue};
 
 #[derive(Debug)]
 pub struct RmqHandler {
@@ -76,6 +36,8 @@ impl RmqHandler {
         }
     }
 
+    /// Method used to create a channel
+    /// method is public so channel is used for every operation
     pub async fn create_channel(&mut self) -> Result<Channel, ProjectError> {
         info!("Creating channel");
         let channel = self.connection.create_channel().await.map_err(|e| {
@@ -84,6 +46,12 @@ impl RmqHandler {
         Ok(channel)
     }
 
+    /// Main method that is used to consume queue waiting for response from core.
+    /// When message is delivered, we check if correlation_id key is present in
+    /// static RESPONSE_CHANNELS.
+    /// If so, the value for that key is a mspc::Sender and the response is sent further
+    /// The key is also deleted for duplication reasons.
+    /// In case key not present in RESPONSE_CHANNELS => message consumed.
     pub async fn consume_main(&mut self) -> Result<(), ProjectError> {
         let current_channel = self.create_channel().await?;
         let exchange = Exchange::new(&PROJECT_CONFIG.rmq_exchange, "direct");
@@ -186,6 +154,8 @@ impl RmqHandler {
     }
 }
 
+/// Function to send message through RabbitMQ.
+/// Mainly used for core/adapter communications.
 pub async fn send_message(
     channel: &Arc<Channel>,
     data: &Request,

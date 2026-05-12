@@ -1,4 +1,6 @@
-use actix_web::{get, web::Data, HttpResponse, Responder};
+//! Simple HTTP ping for server/RabbitMQ check
+//! Module to ping the server checking if Lapin is still connected to RabbitMQ.
+use actix_web::{HttpResponse, Responder, get, web::Data};
 use lapin::Channel;
 use serde_json::json;
 

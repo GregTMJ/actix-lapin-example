@@ -3,18 +3,20 @@ use std::{collections::HashMap, sync::LazyLock};
 use envconfig::Envconfig;
 use lapin::types::ShortString;
 use serde::Deserialize;
-use tokio::sync::Mutex;
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 
 use crate::api::schemas::ServiceResponse;
 
+// Lazy project configs
 pub static PROJECT_CONFIG: LazyLock<Config> =
     LazyLock::new(|| Config::init_from_env().expect("Failed to load envs"));
 
+// Lazy hashmap to contain relation between HTTP & RabbitMQ
 pub static RESPONSE_CHANNELS: LazyLock<
     Mutex<HashMap<ShortString, mpsc::Sender<ServiceResponse>>>,
 > = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// Main config struct
 #[allow(non_snake_case)]
 #[derive(Debug, Default, Deserialize, Envconfig)]
 pub struct Config {
@@ -52,6 +54,7 @@ pub struct Config {
 }
 
 impl Config {
+    // Method to set rmq_url
     pub fn get_rmq_url(&self) -> String {
         format!(
             "amqp://{}:{}@{}:{}/{}{}",

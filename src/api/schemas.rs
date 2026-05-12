@@ -1,3 +1,4 @@
+//! Module for all available schemas that is used in AMQP proccess.
 use std::time::SystemTime;
 
 use crate::{errors::api::ApiErrors, prelude::PROJECT_CONFIG};
@@ -6,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
+/// Struct that contains meta data for requests.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Application {
     pub application_id: Uuid,
@@ -29,6 +31,7 @@ impl Default for Application {
     }
 }
 
+/// Struct for RabbitMQ meta data
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RMQTarget {
     pub vhost: String,
@@ -46,19 +49,23 @@ impl Default for RMQTarget {
     }
 }
 
+/// Struct for common Request.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Request {
     pub application: Application,
     pub target: RMQTarget,
+    // field, that stores request incoming data
     pub person: Map<String, Value>,
 }
 
+/// Basic struct without target when incoming message is parsed.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct IncomingRequest {
     pub application: Application,
     person: Map<String, Value>,
 }
 
+/// No need to use TryFrom because application & person are already validated
 impl From<IncomingRequest> for Request {
     fn from(value: IncomingRequest) -> Self {
         Self {
@@ -69,6 +76,7 @@ impl From<IncomingRequest> for Request {
     }
 }
 
+/// Struct used to validate incoming response from main process.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ServiceResponse {
     pub application_id: Uuid,
@@ -93,6 +101,7 @@ impl TryFrom<Vec<u8>> for ServiceResponse {
     }
 }
 
+/// Method to form a ServiceTimeout response.
 impl From<Request> for ServiceResponse {
     fn from(value: Request) -> Self {
         let now = SystemTime::now();

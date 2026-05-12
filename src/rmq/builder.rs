@@ -1,5 +1,6 @@
+//! Module to build a connection for RabbitMQ.
 use crate::errors::{ProjectError, rmq::RmqErrors};
-use crate::rmq::handler::RmqHandler;
+use crate::rmq::handlers::RmqHandler;
 use lapin::{Connection, ConnectionProperties};
 use log::info;
 
@@ -21,21 +22,18 @@ impl ConnectionBuilder {
         self
     }
 
-    async fn build_rmq_connection(&self) -> Result<Connection, ProjectError> {
-        let rmq_url = &self.rmq_url;
-        Connection::connect(
-            rmq_url,
+    /// Method starts a connection with RabbitMQ and returns it
+    /// if no error acquires.
+    pub async fn build(self) -> Result<RmqHandler, ProjectError> {
+        info!("---- Starting RMQ connection ----");
+        let rmq_connection = Connection::connect(
+            &self.rmq_url,
             ConnectionProperties::default().enable_auto_recover(),
         )
         .await
         .map_err(|e| {
             ProjectError::RmqError(RmqErrors::RMQConnectionError(e.to_string()))
-        })
-    }
-
-    pub async fn build(self) -> Result<RmqHandler, ProjectError> {
-        info!("---- Starting RMQ connection ----");
-        let rmq_connection = self.build_rmq_connection().await?;
+        })?;
         info!("---- RMQ Connection established ----");
 
         Ok(RmqHandler::new(rmq_connection))

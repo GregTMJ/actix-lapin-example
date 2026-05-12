@@ -1,3 +1,4 @@
+//! Module for API errors.
 use thiserror::Error;
 
 #[derive(Debug, Error, Default)]
