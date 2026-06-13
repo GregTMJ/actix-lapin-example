@@ -6,6 +6,7 @@ use log::warn;
 use std::fmt::Debug;
 use std::sync::Arc;
 use tokio_stream::StreamExt;
+use uuid::Uuid;
 
 use crate::api::schemas::Request;
 use crate::api::schemas::ServiceResponse;
@@ -104,7 +105,7 @@ impl RmqHandler {
         let mut consumer = current_channel
             .basic_consume(
                 queue.name.into(),
-                "json_adapter_consumer".into(),
+                format!("json_adapter_consumer_{}", Uuid::new_v4().to_string()).into(),
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )
@@ -149,7 +150,6 @@ impl RmqHandler {
             }
         }
 
-        std::future::pending::<()>().await;
         Ok(())
     }
 }
@@ -166,7 +166,8 @@ pub async fn send_message(
             PROJECT_CONFIG.rmq_servicehub_exchange.as_str().into(),
             PROJECT_CONFIG.rmq_servicehub_request_queue.as_str().into(),
             BasicPublishOptions::default(),
-            &serde_json::to_vec(&data).unwrap(),
+            &serde_json::to_vec(&data)
+                .map_err(|e| RmqErrors::RMQPublishError(e.to_string()))?,
             BasicProperties::default().with_correlation_id(correlation_id.into()),
         )
         .await

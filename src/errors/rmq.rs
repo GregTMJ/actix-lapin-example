@@ -17,7 +17,7 @@ pub enum RmqErrors {
     ConsumerError(String),
     #[error("Error on sending result")]
     ResponseSenderError,
-    #[error("Unkown RMQ error")]
+    #[error("Unknown RMQ error")]
     #[default]
-    Unkown,
+    Unknown,
 }

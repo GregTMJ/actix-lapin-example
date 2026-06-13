@@ -5,7 +5,7 @@ use thiserror::Error;
 pub enum ApiErrors {
     #[error("DeserializeError: {0}")]
     DeserializeResponseError(String),
-    #[error("UnkownError")]
+    #[error("UnknownError")]
     #[default]
-    Unkown,
+    Unknown,
 }

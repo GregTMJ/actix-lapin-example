@@ -84,7 +84,7 @@ async fn send_and_receive(
         debug!("Checking hashmap {:?}", RESPONSE_CHANNELS);
         return HttpResponse::Ok()
             .content_type("application/json")
-            .json(serde_json::to_string(&response).unwrap());
+            .json(&response);
     };
 
     HttpResponse::InternalServerError()
