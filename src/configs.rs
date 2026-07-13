@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::LazyLock};
 use envconfig::Envconfig;
 use lapin::types::ShortString;
 use serde::Deserialize;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, oneshot};
 
 use crate::api::schemas::ServiceResponse;
 
@@ -13,7 +13,7 @@ pub static PROJECT_CONFIG: LazyLock<Config> =
 
 // Lazy hashmap to contain relation between HTTP & RabbitMQ
 pub static RESPONSE_CHANNELS: LazyLock<
-    Mutex<HashMap<ShortString, mpsc::Sender<ServiceResponse>>>,
+    Mutex<HashMap<ShortString, oneshot::Sender<ServiceResponse>>>,
 > = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Main config struct

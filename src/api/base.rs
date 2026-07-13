@@ -6,9 +6,9 @@ use actix_web::{
     web::{Data, Json},
 };
 use lapin::{Channel, types::ShortString};
-use log::{debug, error, info};
+use log::{error, info};
 use serde_json::json;
-use tokio::{sync::mpsc, time::sleep};
+use tokio::{sync::oneshot, time::timeout};
 
 use crate::{
     PROJECT_CONFIG,
@@ -37,56 +37,44 @@ async fn send_and_receive(
     );
     let incoming_request: Request = Request::from(request.into_inner());
     let correlation_id = uuid::Uuid::new_v4().to_string();
-    let (tx, mut rx) = mpsc::channel::<ServiceResponse>(2);
+    let correlation_key = ShortString::from(correlation_id.clone());
+    let (tx, rx) = oneshot::channel::<ServiceResponse>();
 
-    let tx_queue = tx.clone();
     RESPONSE_CHANNELS
         .lock()
         .await
-        .insert(ShortString::from(correlation_id.clone()), tx_queue);
+        .insert(ShortString::from(correlation_id.clone()), tx);
 
-    match send_message(&project_channel, &incoming_request, &correlation_id).await {
-        Ok(()) => (),
-        Err(e) => {
-            error!("{e}");
-            return HttpResponse::InternalServerError()
-                .json(json!({"error": e.to_string()}));
-        }
+    if let Err(e) =
+        send_message(&project_channel, &incoming_request, &correlation_id).await
+    {
+        RESPONSE_CHANNELS.lock().await.remove(&correlation_key);
+        return HttpResponse::InternalServerError()
+            .json(json!({"error": e.to_string()}));
     };
 
-    let tx_timeout = tx.clone();
-    let correlation_id_timeout = correlation_id.clone();
-    tokio::spawn(async move {
-        let timeout_response = ServiceResponse::from(incoming_request);
-        sleep(Duration::from_secs(
-            PROJECT_CONFIG.servicehub_timeout as u64,
-        ))
-        .await;
-        match tx_timeout.send(timeout_response).await {
-            Ok(()) => {
-                debug!("Sending Timeout message");
-                RESPONSE_CHANNELS
-                    .lock()
-                    .await
-                    .remove(&ShortString::from(correlation_id_timeout));
-            }
-            Err(e) => {
-                debug!("Timeout message not send: {e}");
-            }
-        };
-    });
-
-    if let Some(response) = rx.recv().await {
-        debug!("Received response {response:?}");
-        drop(rx);
-        drop(tx);
-        info!("Dropped Tokio channels");
-        debug!("Checking hashmap {:?}", RESPONSE_CHANNELS);
-        return HttpResponse::Ok()
+    match timeout(
+        Duration::from_secs(PROJECT_CONFIG.servicehub_timeout as u64),
+        rx,
+    )
+    .await
+    {
+        Ok(Ok(response)) => HttpResponse::Ok()
             .content_type("application/json")
-            .json(&response);
-    };
+            .json(response),
 
-    HttpResponse::InternalServerError()
-        .json(json!({"ServerError": "Tokio Channels error"}))
+        Ok(Err(_sender_dropped)) => {
+            error!("Response sender disappeared for {correlation_id}");
+
+            HttpResponse::InternalServerError()
+                .json(json!({"error": "Response channel closed"}))
+        }
+
+        Err(_elapsed) => {
+            info!("Service request timed out: {correlation_id}");
+            let timeout_response = ServiceResponse::from(incoming_request);
+
+            HttpResponse::GatewayTimeout().json(timeout_response)
+        }
+    }
 }

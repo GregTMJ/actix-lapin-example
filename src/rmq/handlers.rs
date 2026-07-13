@@ -1,6 +1,5 @@
 //! Module for RMQ struct/function handlers
 use lapin::options::BasicAckOptions;
-use lapin::types::ShortString;
 use log::debug;
 use log::warn;
 use std::fmt::Debug;
@@ -45,6 +44,19 @@ impl RmqHandler {
             ProjectError::RmqError(RmqErrors::RMQChannelCreationError(e.to_string()))
         })?;
         Ok(channel)
+    }
+
+    /// Method to close channel + connection after shutdown
+    pub async fn close(
+        &self,
+        channel: Arc<Channel>,
+    ) -> () {
+        info!("Shutting down consumer");
+        channel.close(200, "Closing channel".into()).await.unwrap();
+        self.connection
+            .close(200, "Closing connection".into())
+            .await
+            .unwrap();
     }
 
     /// Main method that is used to consume queue waiting for response from core.
@@ -105,7 +117,7 @@ impl RmqHandler {
         let mut consumer = current_channel
             .basic_consume(
                 queue.name.into(),
-                format!("json_adapter_consumer_{}", Uuid::new_v4().to_string()).into(),
+                format!("json_adapter_consumer_{}", Uuid::new_v4()).into(),
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )
@@ -115,39 +127,67 @@ impl RmqHandler {
             })?;
 
         info!("Connection state {:?}", self.connection.status());
-        while let Some(delivery) = consumer.next().await {
-            if let Ok(delivery) = delivery {
-                delivery
-                    .ack(BasicAckOptions::default())
-                    .await
-                    .map_err(|e| {
-                        ProjectError::RmqError(RmqErrors::RMQAckError(e.to_string()))
-                    })?;
-                let serhub_response: ServiceResponse =
-                    ServiceResponse::try_from(delivery.data).map_err(|e| {
-                        ProjectError::RmqError(RmqErrors::RMQAckError(e.to_string()))
-                    })?;
-                debug!("Checking hashmap on consumer {:?}", RESPONSE_CHANNELS);
-                match RESPONSE_CHANNELS.lock().await.remove(
-                    delivery
-                        .properties
-                        .correlation_id()
-                        .as_ref()
-                        .unwrap_or(&ShortString::from("default")),
-                ) {
-                    Some(sender) => {
-                        if let Err(e) = sender.send(serhub_response).await {
-                            debug!("Receiver already closed {e}")
-                        }
-                    }
+        while let Some(delivery_result) = consumer.next().await {
+            let deliver = match delivery_result {
+                Ok(deliver) => deliver,
+                Err(e) => {
+                    warn!("RabbitMQ Delivery Error: {e}");
+                    continue;
+                }
+            };
+            let correlation_id =
+                match deliver.properties.correlation_id().as_ref().cloned() {
+                    Some(id) => id,
                     None => {
+                        warn!("Received response without correlation id");
+                        deliver.ack(BasicAckOptions::default()).await.map_err(|e| {
+                            ProjectError::RmqError(RmqErrors::RMQAckError(
+                                e.to_string(),
+                            ))
+                        })?;
+                        continue;
+                    }
+                };
+
+            let service_response =
+                match ServiceResponse::try_from(deliver.data.as_slice()) {
+                    Ok(response) => response,
+                    Err(e) => {
                         warn!(
-                            "Received unexpected message for application_id {}",
-                            serhub_response.application_id,
-                        )
+                            "Invalid response for correlation ID {}: {}",
+                            correlation_id, e
+                        );
+                        deliver.ack(BasicAckOptions::default()).await.map_err(|e| {
+                            ProjectError::RmqError(RmqErrors::RMQAckError(
+                                e.to_string(),
+                            ))
+                        })?;
+                        continue;
+                    }
+                };
+
+            let sender = RESPONSE_CHANNELS.lock().await.remove(&correlation_id);
+            match sender {
+                Some(sender) => {
+                    if sender.send(service_response).is_err() {
+                        debug!(
+                            "HTTP receiver closed before response arrived: {}",
+                            correlation_id
+                        );
                     }
                 }
-            }
+                None => {
+                    debug!(
+                        "No pending request for correlation ID {}; \
+                                 likely timed out, disconnected, duplicated, \
+                                 restarted, or delivered to another instance",
+                        correlation_id
+                    );
+                }
+            };
+            deliver.ack(BasicAckOptions::default()).await.map_err(|e| {
+                ProjectError::RmqError(RmqErrors::RMQAckError(e.to_string()))
+            })?;
         }
 
         Ok(())

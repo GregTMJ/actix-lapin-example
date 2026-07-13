@@ -42,3 +42,33 @@ impl<'a> Queue<'a> {
         Self { name, routing_key }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_exchange() {
+        let queue_name = "test_name";
+        let exchanges_type = [
+            ("topic", ExchangeKind::Topic),
+            ("fanout", ExchangeKind::Fanout),
+            ("headers", ExchangeKind::Headers),
+            ("somethingelse", ExchangeKind::Direct),
+        ];
+        for exchange_type in exchanges_type {
+            let exchange = Exchange::new(queue_name, exchange_type.0);
+            assert_eq!(exchange.name, queue_name);
+            assert_eq!(exchange.exchange_type, exchange_type.1)
+        }
+    }
+
+    #[test]
+    fn test_queue() {
+        let queue_name = "test_name";
+        let routing_key = "test_key";
+        let queue = Queue::new(queue_name, routing_key);
+        assert_eq!(queue.name, queue_name);
+        assert_eq!(queue.routing_key, routing_key);
+    }
+}
