@@ -249,9 +249,9 @@ dependencies = [
 
 [[package]]
 name = "amq-protocol"
-version = "10.3.0"
+version = "10.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5b2e8843d88d935a75cbdb1c5b9ad80987da6e6472c2703914e41dc14560990"
+checksum = "b63f30a81ad95c7a278080be6d993d5b3e971d93e1b00bd894067220fc756804"
 dependencies = [
  "amq-protocol-tcp",
  "amq-protocol-types",
@@ -263,9 +263,9 @@ dependencies = [
 
 [[package]]
 name = "amq-protocol-tcp"
-version = "10.3.0"
+version = "10.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "998fb81655e11de5a336bb609042c11633678fc01f90b0772fb9a7886b6cc4c2"
+checksum = "2b1bcecdd743111f05c26294d26b887ba6b2e4789c27515aa48f0fe32066e96c"
 dependencies = [
  "amq-protocol-uri",
  "async-rs",
@@ -276,9 +276,9 @@ dependencies = [
 
 [[package]]
 name = "amq-protocol-types"
-version = "10.3.0"
+version = "10.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee5b3a9e458bd2e452536995c8cf861b01c17283f55c4bbe0a1b9626b8253add"
+checksum = "8a268a50e97bd5d52292a8b96636f6436215def6f3d128fb8218318f5feb4c33"
 dependencies = [
  "cookie-factory",
  "nom 8.0.0",
@@ -288,9 +288,9 @@ dependencies = [
 
 [[package]]
 name = "amq-protocol-uri"
-version = "10.3.0"
+version = "10.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dca3316970d20cdcca9123f4e8feb7a2c1c8fdca572a9692fc10002db35407aa"
+checksum = "8a34581b010818ef3da6b5a853e94f6438b3903914baba77a15f7fb2c7ad8958"
 dependencies = [
  "amq-protocol-types",
  "percent-encoding",
@@ -1762,16 +1762,16 @@ checksum = "d4345964bb142484797b161f473a503a434de77149dd8c7427788c6e13379388"
 
 [[package]]
 name = "lapin"
-version = "4.7.0"
+version = "4.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d66b77d79b9752fad298008c1c5a83a40477b59879aaca7554f1b381cbf606ff"
+checksum = "3212643cc0031d982f81a62360998106268587237d81d6e8501a0a323e13b656"
 dependencies = [
  "amq-protocol",
  "async-rs",
  "async-trait",
- "atomic-waker",
  "backon",
  "cfg-if",
+ "event-listener",
  "flume",
  "futures-core",
  "futures-io",

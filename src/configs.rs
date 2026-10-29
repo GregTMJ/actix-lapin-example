@@ -1,20 +1,5 @@
-use std::{collections::HashMap, sync::LazyLock};
-
 use envconfig::Envconfig;
-use lapin::types::ShortString;
 use serde::Deserialize;
-use tokio::sync::{Mutex, oneshot};
-
-use crate::api::schemas::ServiceResponse;
-
-// Lazy project configs
-pub static PROJECT_CONFIG: LazyLock<Config> =
-    LazyLock::new(|| Config::init_from_env().expect("Failed to load envs"));
-
-// Lazy hashmap to contain relation between HTTP & RabbitMQ
-pub static RESPONSE_CHANNELS: LazyLock<
-    Mutex<HashMap<ShortString, oneshot::Sender<ServiceResponse>>>,
-> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Main config struct
 #[allow(non_snake_case)]
@@ -41,8 +26,6 @@ pub struct Config {
 
     #[envconfig(from = "RMQ_SERVICEHUB_EXCHANGE", default = "servicehub")]
     pub rmq_servicehub_exchange: String,
-    #[envconfig(from = "RMQ_SERVICEHUB_EXCHANGE_TYPE", default = "direct")]
-    pub rmq_servicehub_exchange_type: String,
     #[envconfig(
         from = "RMQ_SERVICEHUB_REQUEST_QUEUE",
         default = "servicehub.q.request"

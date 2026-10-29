@@ -4,8 +4,10 @@ use actix_web::{
     main, middleware,
     web::{Data, scope},
 };
+use envconfig::Envconfig;
 use log::{error, info, warn};
 use std::{
+    collections::HashMap,
     io::Result,
     sync::{
         Arc,
@@ -13,11 +15,12 @@ use std::{
     },
     time::Duration,
 };
-use tokio::signal;
+use tokio::{signal, sync::Mutex};
+use uuid::Uuid;
 
 use actix_lapin::{
-    PROJECT_CONFIG,
-    api::{base::send_and_receive, ping::healthcheck},
+    api::{base::send_and_receive, ping::healthcheck, schemas::RMQTarget},
+    configs::Config,
     rmq::builder::ConnectionBuilder,
     state::AppState,
 };
@@ -29,8 +32,11 @@ async fn main() -> Result<()> {
     dotenv().ok();
     init_from_env(Env::default().default_filter_or("info"));
 
+    // Lazy project configs
+    let project_configs: Config = Config::init_from_env().expect("Failed to load envs");
+
     let rmq_connection_builder =
-        ConnectionBuilder::new().with_rmq_url(PROJECT_CONFIG.get_rmq_url());
+        ConnectionBuilder::new().with_rmq_url(project_configs.get_rmq_url());
 
     let mut rmq_handler = rmq_connection_builder
         .build()
@@ -44,16 +50,23 @@ async fn main() -> Result<()> {
             .expect("failed to create RabbitMQ channel"),
     );
 
+    let response_exchage = project_configs.rmq_exchange.clone();
+    let response_queue =
+        format!("{}.{}", project_configs.rmq_response_queue, Uuid::new_v4());
+    let rmq_target = RMQTarget::new(&project_configs, response_queue.clone());
     let app_state = Arc::new(AppState {
+        project_configs,
         rmq_channel: channel.clone(),
+        rmq_target,
         shutdown_state: AtomicBool::new(false),
+        response_channels: Arc::new(Mutex::new(HashMap::new())),
     });
 
-    let http_state = app_state.clone();
+    let http_state = Data::new(app_state.clone());
 
     let server = HttpServer::new(move || {
         App::new()
-            .app_data(Data::new(http_state.clone()))
+            .app_data(http_state.clone())
             .wrap(middleware::Logger::default())
             .service(
                 scope("/api/v1")
@@ -62,7 +75,7 @@ async fn main() -> Result<()> {
             )
     })
     .bind(("0.0.0.0", 8000))?
-    .workers(2)
+    .workers(1)
     .shutdown_timeout(30)
     .keep_alive(Duration::from_secs(75))
     .client_request_timeout(Duration::from_secs(60))
@@ -75,7 +88,7 @@ async fn main() -> Result<()> {
 
     let lifecycle_task = tokio::spawn(async move {
         tokio::select! {
-            consume_result = rmq_handler.consume_main() => {
+            consume_result = rmq_handler.consume_main(&response_queue, &response_exchage, &app_state.response_channels) => {
                 match consume_result {
                     Ok(()) => {
                         warn!("RabbitMQ consumer stopped unexpectedly");
@@ -84,6 +97,8 @@ async fn main() -> Result<()> {
                         error!("RabbitMQ consumer error: {error:?}");
                     }
                 }
+
+                shutdown_application(&shutdown_state, &server_handle).await;
             }
 
             signal_result = shutdown_signal() => {

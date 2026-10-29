@@ -1,14 +1,14 @@
 //! Module for all available schemas that is used in AMQP proccess.
 use std::time::SystemTime;
 
-use crate::{errors::api::ApiErrors, prelude::PROJECT_CONFIG};
+use crate::{configs::Config, errors::api::ApiErrors};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 /// Struct that contains meta data for requests.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Application {
     pub application_id: Uuid,
     pub system_id: u16,
@@ -16,15 +16,6 @@ pub struct Application {
     pub request_system_name: Option<String>,
     pub is_resend: bool,
     pub multi_request: bool,
-}
-
-impl PartialEq for Application {
-    fn eq(
-        &self,
-        other: &Self,
-    ) -> bool {
-        self.service_id == other.service_id
-    }
 }
 
 impl Default for Application {
@@ -41,19 +32,22 @@ impl Default for Application {
 }
 
 /// Struct for RabbitMQ meta data
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RMQTarget {
     pub vhost: String,
     pub exchange: String,
     pub routing_key: String,
 }
 
-impl Default for RMQTarget {
-    fn default() -> Self {
+impl RMQTarget {
+    pub fn new(
+        project_configs: &Config,
+        routing_key: String,
+    ) -> Self {
         Self {
-            vhost: PROJECT_CONFIG.rmq_vhost.clone(),
-            exchange: PROJECT_CONFIG.rmq_exchange.clone(),
-            routing_key: PROJECT_CONFIG.rmq_response_queue.clone(),
+            vhost: project_configs.rmq_vhost.clone(),
+            exchange: project_configs.rmq_exchange.clone(),
+            routing_key,
         }
     }
 }
@@ -154,23 +148,14 @@ mod tests {
         let default_application = get_default_application();
         assert_eq!(default_application.service_id, 1);
         assert_eq!(default_application.system_id, 1);
-        assert_eq!(default_application.multi_request, false);
-    }
-
-    #[test]
-    fn test_rmq_target() {
-        let default_target = get_default_rmq_target();
-        assert_eq!(
-            default_target.routing_key,
-            PROJECT_CONFIG.rmq_response_queue.clone()
-        )
+        assert!(!default_application.multi_request);
     }
 
     #[test]
     fn test_request() {
         let default_request = get_default_request();
         assert_eq!(default_request.person, Map::new());
-        assert_eq!(default_request.application, get_default_application());
+        assert_eq!(default_request.application.system_id, 1);
         assert_eq!(default_request.target, get_default_rmq_target());
     }
 
@@ -178,7 +163,7 @@ mod tests {
     fn test_incoming_request() {
         let default_request = get_default_incoming_request();
         assert_eq!(default_request.person, Map::new());
-        assert_eq!(default_request.application, get_default_application());
+        assert_eq!(default_request.application.system_id, 1);
     }
 
     #[test]
@@ -212,7 +197,7 @@ mod tests {
     fn test_service_response_from_request() {
         let default_request = get_default_request();
         let service_response_timeout: ServiceResponse = default_request.into();
-        assert_eq!(service_response_timeout.is_cache, false);
+        assert!(!service_response_timeout.is_cache);
         assert_eq!(
             service_response_timeout.status,
             "ServiceTimeout".to_string()

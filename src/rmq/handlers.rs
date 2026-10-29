@@ -2,15 +2,14 @@
 use lapin::options::BasicAckOptions;
 use log::debug;
 use log::warn;
-use std::fmt::Debug;
 use std::sync::Arc;
 use tokio_stream::StreamExt;
 use uuid::Uuid;
 
 use crate::api::schemas::Request;
 use crate::api::schemas::ServiceResponse;
-use crate::configs::RESPONSE_CHANNELS;
 use crate::errors::ProjectError;
+use crate::state::ResponseChannelMap;
 use lapin::BasicProperties;
 use lapin::Channel;
 use lapin::Connection as AMQPConnection;
@@ -20,7 +19,6 @@ use lapin::options::{ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptio
 use lapin::types::FieldTable;
 use log::info;
 
-use crate::PROJECT_CONFIG;
 use crate::errors::rmq::RmqErrors;
 use crate::rmq::schemas::{Exchange, Queue};
 
@@ -50,13 +48,18 @@ impl RmqHandler {
     pub async fn close(
         &self,
         channel: Arc<Channel>,
-    ) -> () {
+    ) {
         info!("Shutting down consumer");
-        channel.close(200, "Closing channel".into()).await.unwrap();
-        self.connection
+        if let Err(error) = channel.close(200, "Closing channel".into()).await {
+            warn!("Failed to close RabbitMQ channel: {error}");
+        }
+        if let Err(error) = self
+            .connection
             .close(200, "Closing connection".into())
             .await
-            .unwrap();
+        {
+            warn!("Failed to close RabbitMQ connection: {error}");
+        }
     }
 
     /// Main method that is used to consume queue waiting for response from core.
@@ -65,13 +68,15 @@ impl RmqHandler {
     /// If so, the value for that key is a mspc::Sender and the response is sent further
     /// The key is also deleted for duplication reasons.
     /// In case key not present in RESPONSE_CHANNELS => message consumed.
-    pub async fn consume_main(&mut self) -> Result<(), ProjectError> {
+    pub async fn consume_main(
+        &mut self,
+        queue: &str,
+        exchange: &str,
+        channels: &Arc<ResponseChannelMap>,
+    ) -> Result<(), ProjectError> {
         let current_channel = self.create_channel().await?;
-        let exchange = Exchange::new(&PROJECT_CONFIG.rmq_exchange, "direct");
-        let queue = Queue::new(
-            &PROJECT_CONFIG.rmq_response_queue,
-            &PROJECT_CONFIG.rmq_response_queue,
-        );
+        let exchange = Exchange::new(exchange, "direct");
+        let queue = Queue::new(queue, queue);
         info!("Binding queue {} to channel", queue.name);
         current_channel
             .exchange_declare(
@@ -91,7 +96,8 @@ impl RmqHandler {
             .queue_declare(
                 queue.name.into(),
                 QueueDeclareOptions {
-                    durable: true,
+                    exclusive: true,
+                    auto_delete: true,
                     ..Default::default()
                 },
                 FieldTable::default(),
@@ -166,7 +172,7 @@ impl RmqHandler {
                     }
                 };
 
-            let sender = RESPONSE_CHANNELS.lock().await.remove(&correlation_id);
+            let sender = channels.lock().await.remove(&correlation_id);
             match sender {
                 Some(sender) => {
                     if sender.send(service_response).is_err() {
@@ -199,12 +205,14 @@ impl RmqHandler {
 pub async fn send_message(
     channel: &Arc<Channel>,
     data: &Request,
+    exchange: &str,
+    queue: &str,
     correlation_id: &str,
 ) -> Result<(), RmqErrors> {
     channel
         .basic_publish(
-            PROJECT_CONFIG.rmq_servicehub_exchange.as_str().into(),
-            PROJECT_CONFIG.rmq_servicehub_request_queue.as_str().into(),
+            exchange.into(),
+            queue.into(),
             BasicPublishOptions::default(),
             &serde_json::to_vec(&data)
                 .map_err(|e| RmqErrors::RMQPublishError(e.to_string()))?,

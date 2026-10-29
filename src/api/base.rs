@@ -1,20 +1,19 @@
 //! Module contains main route for project
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use actix_web::{
     HttpResponse, post,
     web::{Data, Json},
 };
-use lapin::{Channel, types::ShortString};
+use lapin::types::ShortString;
 use log::{error, info};
 use serde_json::json;
 use tokio::{sync::oneshot, time::timeout};
 
 use crate::{
-    PROJECT_CONFIG,
     api::schemas::{IncomingRequest, Request, ServiceResponse},
-    configs::RESPONSE_CHANNELS,
     rmq::handlers::send_message,
+    state::AppState,
 };
 
 /// Endpoint used to create a communication between HTTP and AMQP.
@@ -28,33 +27,45 @@ use crate::{
 /// IMPORTANT! the mpsc::channel is dropped when a response is received.
 #[post("/request-servicehub")]
 async fn send_and_receive(
-    project_channel: Data<Channel>,
+    app_state: Data<Arc<AppState>>,
     request: Json<IncomingRequest>,
 ) -> HttpResponse {
     info!(
         "Processing application_id {}",
         request.application.application_id
     );
-    let incoming_request: Request = Request::from(request.into_inner());
+    let mut incoming_request: Request = Request::from(request.into_inner());
+    incoming_request.target = app_state.rmq_target.clone();
     let correlation_id = uuid::Uuid::new_v4().to_string();
     let correlation_key = ShortString::from(correlation_id.clone());
     let (tx, rx) = oneshot::channel::<ServiceResponse>();
 
-    RESPONSE_CHANNELS
+    app_state
+        .response_channels
         .lock()
         .await
         .insert(ShortString::from(correlation_id.clone()), tx);
 
-    if let Err(e) =
-        send_message(&project_channel, &incoming_request, &correlation_id).await
+    if let Err(e) = send_message(
+        &app_state.rmq_channel,
+        &incoming_request,
+        &app_state.project_configs.rmq_servicehub_exchange,
+        &app_state.project_configs.rmq_servicehub_request_queue,
+        &correlation_id,
+    )
+    .await
     {
-        RESPONSE_CHANNELS.lock().await.remove(&correlation_key);
+        app_state
+            .response_channels
+            .lock()
+            .await
+            .remove(&correlation_key);
         return HttpResponse::InternalServerError()
             .json(json!({"error": e.to_string()}));
     };
 
     match timeout(
-        Duration::from_secs(PROJECT_CONFIG.servicehub_timeout as u64),
+        Duration::from_secs(app_state.project_configs.servicehub_timeout as u64),
         rx,
     )
     .await
@@ -72,6 +83,11 @@ async fn send_and_receive(
 
         Err(_elapsed) => {
             info!("Service request timed out: {correlation_id}");
+            app_state
+                .response_channels
+                .lock()
+                .await
+                .remove(&correlation_key);
             let timeout_response = ServiceResponse::from(incoming_request);
 
             HttpResponse::GatewayTimeout().json(timeout_response)
